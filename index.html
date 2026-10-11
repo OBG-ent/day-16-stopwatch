@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Lap-Time Stopwatch</title>
+<style>
+  /* ---- Reset & base ---- */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 48px 16px 64px;
+    /* Deep-space gradient background */
+    background: radial-gradient(1200px 800px at 50% -10%, #1b2a4a 0%, #0d1226 55%, #080b18 100%);
+    color: #e8ecf8;
+  }
+
+  h1 {
+    font-size: 1.6rem;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    color: #8fa3d9;
+    margin-bottom: 32px;
+  }
+
+  /* ---- Big digital display ---- */
+  .display {
+    font-family: 'Consolas', 'SF Mono', monospace;
+    font-size: clamp(3rem, 12vw, 5.5rem);
+    font-variant-numeric: tabular-nums; /* digits never jump around */
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 20px;
+    padding: 24px 40px;
+    min-width: min(92vw, 560px);
+    text-align: center;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+  }
+  .display .cs { font-size: 0.45em; color: #7fd0ff; }
+
+  /* ---- Buttons ---- */
+  .controls { display: flex; gap: 16px; margin: 32px 0 8px; }
+
+  button {
+    font-size: 1rem;
+    font-weight: 600;
+    letter-spacing: 1px;
+    border: none;
+    border-radius: 999px;
+    padding: 14px 34px;
+    cursor: pointer;
+    transition: transform 0.12s ease, box-shadow 0.12s ease, opacity 0.2s;
+    color: #fff;
+  }
+  button:hover:not(:disabled) { transform: translateY(-2px); }
+  button:active:not(:disabled) { transform: translateY(0); }
+  button:disabled { opacity: 0.35; cursor: not-allowed; }
+
+  #startBtn { background: linear-gradient(135deg, #22c55e, #15803d); box-shadow: 0 8px 24px rgba(34, 197, 94, 0.35); }
+  #startBtn.pause { background: linear-gradient(135deg, #f59e0b, #b45309); box-shadow: 0 8px 24px rgba(245, 158, 11, 0.35); }
+  #lapBtn   { background: linear-gradient(135deg, #3b82f6, #1d4ed8); box-shadow: 0 8px 24px rgba(59, 130, 246, 0.35); }
+  #resetBtn { background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.2); }
+
+  .hint { color: #5b6b94; font-size: 0.85rem; margin-bottom: 28px; }
+  .hint kbd {
+    background: rgba(255,255,255,0.08);
+    border: 1px solid rgba(255,255,255,0.15);
+    border-radius: 6px;
+    padding: 2px 8px;
+    font-family: inherit;
+  }
+
+  /* ---- Stats bar ---- */
+  .stats {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    justify-content: center;
+    margin-bottom: 24px;
+  }
+  .stat {
+    background: rgba(255,255,255,0.04);
+    border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px;
+    padding: 10px 20px;
+    text-align: center;
+    min-width: 120px;
+  }
+  .stat .label { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 2px; color: #8fa3d9; }
+  .stat .value { font-family: 'Consolas', monospace; font-size: 1.15rem; margin-top: 4px; }
+
+  /* ---- Lap list ---- */
+  .laps { width: min(92vw, 560px); max-height: 320px; overflow-y: auto; }
+  .lap-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 10px 20px;
+    border-bottom: 1px solid rgba(255,255,255,0.07);
+    font-family: 'Consolas', monospace;
+    animation: slideIn 0.25s ease;
+  }
+  @keyframes slideIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+  .lap-row .num { color: #8fa3d9; }
+  .lap-row.fastest { color: #4ade80; } /* fastest lap glows green */
+  .lap-row.slowest { color: #f87171; } /* slowest lap glows red */
+  .empty { text-align: center; color: #5b6b94; padding: 24px; font-style: italic; }
+</style>
+</head>
+<body>
+
+  <h1>Stopwatch</h1>
+
+  <!-- The big timer readout: MM:SS.cs -->
+  <div class="display"><span id="time">00:00</span><span class="cs" id="centis">.00</span></div>
+
+  <div class="controls">
+    <button id="startBtn">Start</button>
+    <button id="lapBtn" disabled>Lap</button>
+    <button id="resetBtn">Reset</button>
+  </div>
+
+  <p class="hint">Shortcuts: <kbd>Space</kbd> start/pause &nbsp;·&nbsp; <kbd>L</kbd> lap &nbsp;·&nbsp; <kbd>R</kbd> reset</p>
+
+  <!-- Live stats update as you record laps -->
+  <div class="stats">
+    <div class="stat"><div class="label">Laps</div><div class="value" id="statCount">0</div></div>
+    <div class="stat"><div class="label">Fastest</div><div class="value" id="statBest">—</div></div>
+    <div class="stat"><div class="label">Slowest</div><div class="value" id="statWorst">—</div></div>
+    <div class="stat"><div class="label">Average</div><div class="value" id="statAvg">—</div></div>
+  </div>
+
+  <!-- Laps appear here, newest first -->
+  <div class="laps" id="laps"><div class="empty">No laps yet — hit Start, then Lap.</div></div>
+
+<script>
+  // ===== Stopwatch state =====
+  let startTimestamp = 0;   // when the current run segment began
+  let accumulated = 0;      // ms banked from previous segments
+  let running = false;
+  let laps = [];            // [{ n, lapMs, totalMs }]
+  let tickId = null;
+
+  const timeEl = document.getElementById('time');
+  const centisEl = document.getElementById('centis');
+  const startBtn = document.getElementById('startBtn');
+  const lapBtn = document.getElementById('lapBtn');
+  const resetBtn = document.getElementById('resetBtn');
+  const lapsEl = document.getElementById('laps');
+
+  // ===== Helpers =====
+  // ms -> "MM:SS.cs"  (e.g. 75430 -> "01:15.43")
+  function format(ms) {
+    const totalCs = Math.floor(ms / 10);
+    const cs = String(totalCs % 100).padStart(2, '0');
+    const s  = String(Math.floor(totalCs / 100) % 60).padStart(2, '0');
+    const m  = String(Math.floor(totalCs / 6000)).padStart(2, '0');
+    return `${m}:${s}.${cs}`;
+  }
+  function currentMs() {
+    return accumulated + (running ? performance.now() - startTimestamp : 0);
+  }
+  function render() {
+    const [main, frac] = format(currentMs()).split('.');
+    timeEl.textContent = main;
+    centisEl.textContent = '.' + frac;
+  }
+
+  // ===== Controls =====
+  function toggleStart() {
+    if (running) {
+      accumulated = currentMs();          // bank the time so far
+      running = false;
+      clearInterval(tickId);
+      startBtn.textContent = 'Start';
+      startBtn.classList.remove('pause');
+      lapBtn.disabled = true;
+    } else {
+      startTimestamp = performance.now(); // resume from banked time
+      running = true;
+      tickId = setInterval(render, 31);   // ~33fps is smooth enough
+      startBtn.textContent = 'Pause';
+      startBtn.classList.add('pause');
+      lapBtn.disabled = false;
+    }
+    render();
+  }
+
+  function recordLap() {
+    if (!running) return;
+    const totalMs = currentMs();
+    const prevTotal = laps.length ? laps[0].totalMs : 0;
+    laps.unshift({ n: laps.length + 1, lapMs: totalMs - prevTotal, totalMs });
+    renderLaps();
+  }
+
+  function resetAll() {
+    running = false;
+    clearInterval(tickId);
+    accumulated = 0;
+    laps = [];
+    startBtn.textContent = 'Start';
+    startBtn.classList.remove('pause');
+    lapBtn.disabled = true;
+    render();
+    renderLaps();
+  }
+
+  // ===== Lap list + stats =====
+  function renderLaps() {
+    document.getElementById('statCount').textContent = laps.length;
+    if (!laps.length) {
+      document.getElementById('statBest').textContent = '—';
+      document.getElementById('statWorst').textContent = '—';
+      document.getElementById('statAvg').textContent = '—';
+      lapsEl.innerHTML = '<div class="empty">No laps yet — hit Start, then Lap.</div>';
+      return;
+    }
+    const times = laps.map(l => l.lapMs);
+    const best = Math.min(...times), worst = Math.max(...times);
+    const avg = times.reduce((a, b) => a + b, 0) / times.length;
+    document.getElementById('statBest').textContent = format(best);
+    document.getElementById('statWorst').textContent = format(worst);
+    document.getElementById('statAvg').textContent = format(avg);
+
+    // Newest lap first; highlight fastest (green) & slowest (red)
+    lapsEl.innerHTML = laps.map(l => {
+      const cls = l.lapMs === best ? ' fastest' : (l.lapMs === worst ? ' slowest' : '');
+      return `<div class="lap-row${cls}">
+        <span class="num">Lap ${l.n}</span>
+        <span>+${format(l.lapMs)}</span>
+        <span>${format(l.totalMs)}</span>
+      </div>`;
+    }).join('');
+  }
+
+  // ===== Wire everything up =====
+  startBtn.addEventListener('click', toggleStart);
+  lapBtn.addEventListener('click', recordLap);
+  resetBtn.addEventListener('click', resetAll);
+
+  // Keyboard shortcuts: Space = start/pause, L = lap, R = reset
+  document.addEventListener('keydown', e => {
+    if (e.code === 'Space') { e.preventDefault(); toggleStart(); }
+    else if (e.key.toLowerCase() === 'l') recordLap();
+    else if (e.key.toLowerCase() === 'r') resetAll();
+  });
+
+  render();
+</script>
+</body>
+</html>
